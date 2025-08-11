@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # === Load Excel ===
-file_path = "SKV Sheet-1.xlsx"  # Original master file in repo
+file_path = "SKV Sheet-1.csv"  # Original master file in repo
 df = pd.read_excel(file_path)
 
 # === Clean Yahoo Stock Symbols ===
