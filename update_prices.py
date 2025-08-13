@@ -47,7 +47,7 @@ for symbol in df["Yahoo Symbol"]:
 df["Last Close Price"] = new_prices
 
 # === Save to CSV (no Change % column) ===
-output_file = "SKV_Sheet_1_Updated.csv"
+output_file = "SKV Sheet-1-Updated.csv"
 df.to_csv(output_file, index=False)
 
 print(f"✅ CSV saved at {datetime.now()} — open in Excel and apply filter on 'Last Close Price' column")
