@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # === Load Excel ===
-file_path = "SKV Sheet-1.csv"  # Original master file in repo
+file_path = "SKV Sheet-1.xlsx"  # Uploaded file name
 df = pd.read_excel(file_path)
 
 # === Clean Yahoo Stock Symbols ===
@@ -16,15 +16,9 @@ def clean_symbol(sym):
     sym = re.sub(r"^\$+", "", sym)
     sym = sym.replace("_", "-")
     sym = re.sub(r"[^A-Z0-9\-]", "", sym)
-    return sym + ".NS"
+    return sym + ".NS"  # NSE format
 
 df["Yahoo Symbol"] = df["Stock Name"].apply(clean_symbol)
-
-# === Rename 'Last Close Price' to 'Previous Price' if exists ===
-if "Last Close Price" in df.columns:
-    df.rename(columns={"Last Close Price": "Previous Price"}, inplace=True)
-else:
-    df["Previous Price"] = None
 
 # === Fetch Updated Prices ===
 new_prices = []
@@ -34,47 +28,34 @@ for symbol in df["Yahoo Symbol"]:
     if pd.isna(symbol):
         new_prices.append(None)
         continue
-
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period="1d")
-
         if hist.empty:
             hist = ticker.history(period="5d")
-
         if not hist.empty:
             last_close = round(hist["Close"].dropna().iloc[-1], 2)
             new_prices.append(last_close)
         else:
             new_prices.append(None)
             failed_symbols.append(symbol)
-
     except Exception:
         new_prices.append(None)
         failed_symbols.append(symbol)
-
     time.sleep(0.3)
 
 df["Last Close Price"] = new_prices
 
-# === Calculate % Change ===
-def calc_change_percent(new, old):
-    if pd.isna(new) or pd.isna(old) or old == 0:
-        return None
-    return round(((new - old) / old) * 100, 2)
-
-df["% Change"] = df.apply(lambda row: calc_change_percent(row["Last Close Price"], row["Previous Price"]), axis=1)
-
-# === Flag Rows ===
-df["Flag"] = df["% Change"].apply(lambda x: "Highlight" if isinstance(x, float) and abs(x) > 2.5 else "")
-
-# === Save Updated CSV (overwrite existing updated file) ===
-output_file = "SKV Sheet-1-Updated.csv"
+# === Save to CSV (no Change % column) ===
+output_file = "SKV_Sheet_1_Updated.csv"
 df.to_csv(output_file, index=False)
 
-print(f"✅ CSV updated at {datetime.now()}")
+print(f"✅ CSV saved at {datetime.now()} — open in Excel and apply filter on 'Last Close Price' column")
 
 if failed_symbols:
     print("\n⚠️ Failed to fetch:")
     for sym in sorted(set(failed_symbols)):
         print(" -", sym)
+
+# Prevent GitHub Actions JSON-to-Python errors
+execution_count = None 
