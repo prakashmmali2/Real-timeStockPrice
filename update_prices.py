@@ -4,13 +4,16 @@ import re
 import time
 from datetime import datetime
 
+# === File Paths ===
+excel_file = "SKV Sheet-1.xlsx"       # Original client-editable file
+output_csv = "SKV Sheet-1-Updated.csv"  # CSV for Power Query
+
 # === Load Excel ===
-file_path = "SKV Sheet-1.xlsx"  # Uploaded file name
-df = pd.read_excel(file_path)
+df = pd.read_excel(excel_file)
 
 # === Clean Yahoo Stock Symbols ===
 def clean_symbol(sym):
-    if not isinstance(sym, str):
+    if not isinstance(sym, str) or sym.strip() == "":
         return None
     sym = sym.strip().upper()
     sym = re.sub(r"^\$+", "", sym)
@@ -18,7 +21,11 @@ def clean_symbol(sym):
     sym = re.sub(r"[^A-Z0-9\-]", "", sym)
     return sym + ".NS"  # NSE format
 
-df["Yahoo Symbol"] = df["Stock Name"].apply(clean_symbol)
+# Create symbol column if not exists
+if "Yahoo Symbol" not in df.columns:
+    df["Yahoo Symbol"] = df["Stock Name"].apply(clean_symbol)
+else:
+    df["Yahoo Symbol"] = df["Stock Name"].apply(clean_symbol)
 
 # === Fetch Updated Prices ===
 new_prices = []
@@ -42,15 +49,20 @@ for symbol in df["Yahoo Symbol"]:
     except Exception:
         new_prices.append(None)
         failed_symbols.append(symbol)
-    time.sleep(0.3)
+    time.sleep(0.3)  # avoid rate limits
 
+# Update only the "Last Close Price" column
 df["Last Close Price"] = new_prices
 
-# === Save to CSV (no Change % column) ===
-output_file = "SKV Sheet-1-Updated.csv"
-df.to_csv(output_file, index=False)
+# === Save back to Excel ===
+df.to_excel(excel_file, index=False)
 
-print(f"✅ CSV saved at {datetime.now()} — open in Excel and apply filter on 'Last Close Price' column")
+# === Save to CSV for Power Query ===
+df.to_csv(output_csv, index=False)
+
+print(f"✅ Prices updated at {datetime.now()}")
+print(f"📂 Excel file updated: {excel_file}")
+print(f"📂 CSV file updated: {output_csv}")
 
 if failed_symbols:
     print("\n⚠️ Failed to fetch:")
@@ -58,4 +70,4 @@ if failed_symbols:
         print(" -", sym)
 
 # Prevent GitHub Actions JSON-to-Python errors
-execution_count = None 
+execution_count = None
