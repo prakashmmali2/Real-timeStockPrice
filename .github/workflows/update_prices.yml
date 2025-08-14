@@ -5,13 +5,12 @@ on:
     paths:
       - "SKV Sheet_Updated PM.xlsx"
   schedule:
-    - cron: "*/15 * * * *"  # Every 15 min
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
