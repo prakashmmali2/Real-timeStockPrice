@@ -3,7 +3,7 @@ name: Update Stock Prices
 on:
   push:
     paths:
-      - "SKV Sheet-1-Updated.xlsx"
+      - "SKV Sheet_Updated PM.xlsx"
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
