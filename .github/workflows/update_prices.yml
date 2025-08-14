@@ -1,48 +1,39 @@
 name: Update Stock Prices
 
 on:
+  push:
+    paths:
+      - "SKV Sheet-1-Updated.xlsx"
   schedule:
-    - cron: "*/15 * * * *"  # Every 15 minutes
-  workflow_dispatch:        # Manual run
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. Pull latest Excel (with client edits)
-      - name: Pull latest changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main --rebase
-
-      # 3. Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      # 4. Install dependencies
       - name: Install dependencies
         run: |
           pip install pandas yfinance openpyxl
 
-      # 5. Run update script
       - name: Run update script
         run: python update_prices.py
 
-      # 6. Commit and push updated Excel + CSV
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add "SKV Sheet-1.xlsx" "SKV Sheet-1-Updated.csv"
+          git add "SKV Sheet-1-Updated.xlsx" "SKV Sheet-1-Updated.csv"
           git commit -m "Auto-update stock prices [skip ci]" || echo "No changes to commit"
           git push
