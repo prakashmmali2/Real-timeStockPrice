@@ -11,6 +11,8 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # ✅ Needed to push changes back
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
