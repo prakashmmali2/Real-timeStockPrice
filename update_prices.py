@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils.cell import get_column_letter
 
 # ========= SETTINGS =========
-MASTER_XLSX = "SKV Sheet_Updated PM.xlsx"    # You edit this file
+MASTER_XLSX = "SKV Sheet_Updated PM.csv"    # You edit this file
 OUTPUT_CSV  = "SKV Sheet-1-Updated.csv"      # Power Query / GitHub raw
 THRESHOLD   = 0.025                           # 2.5% for green/red highlights
 SLEEP_SEC   = 0.3                             # polite delay for Yahoo
