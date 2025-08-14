@@ -5,24 +5,24 @@ import time
 from datetime import datetime
 import os
 
-# === Master file is now the UPDATED file ===
-updated_file = "SKV Sheet-1-Updated.csv"  # Client edits here
-output_csv = "SKV Sheet_Updated PM.xls"     # Power Query reads this
+# === Master file ===
+updated_file = "SKV Sheet_Updated PM.xlsx"  # Client edits here
+output_csv = "SKV Sheet-1-Updated.csv"      # Output for Power Query
 
 if not os.path.exists(updated_file):
     raise FileNotFoundError(f"{updated_file} not found in repo!")
 
-# === Load Updated file ===
-df = pd.read_excel(updated_file)
+# === Load Updated file (.xlsx uses openpyxl) ===
+df = pd.read_excel(updated_file, engine="openpyxl")
 
 # === Clean Yahoo Stock Symbols ===
 def clean_symbol(sym):
     if not isinstance(sym, str) or sym.strip() == "":
         return None
     sym = sym.strip().upper()
-    sym = re.sub(r"^\$+", "", sym)
-    sym = sym.replace("_", "-")
-    sym = re.sub(r"[^A-Z0-9\-]", "", sym)
+    sym = re.sub(r"^\$+", "", sym)   # remove leading $
+    sym = sym.replace("_", "-")      # replace _ with -
+    sym = re.sub(r"[^A-Z0-9\-]", "", sym)  # allow only letters, digits, dash
     if not sym.endswith(".NS"):
         sym += ".NS"
     return sym
@@ -66,7 +66,7 @@ def update_price(row):
 df["Last Close Price"] = df.apply(update_price, axis=1)
 
 # === Save Updated File ===
-df.to_excel(updated_file, index=False)
+df.to_excel(updated_file, index=False)  # overwrite same file
 df.to_csv(output_csv, index=False)
 
 print(f"✅ Prices updated at {datetime.now()}")
