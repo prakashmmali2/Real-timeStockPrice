@@ -1,4 +1,4 @@
-import os, re, time
+import os, re, time, subprocess, sys
 from datetime import datetime
 
 import pandas as pd
@@ -7,30 +7,70 @@ import yfinance as yf
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 from openpyxl.formatting.rule import FormulaRule
+from openpyxl.utils.cell import get_column_letter
 
 # ========= SETTINGS =========
-MASTER_XLSX = "SKV Sheet_Updated PM.xlsx"    # client edits this
-OUTPUT_CSV  = "SKV Sheet-1-Updated.csv"      # for Power Query / web
-THRESHOLD   = 0.025                           # 2.5%
+MASTER_XLSX = "SKV Sheet_Updated PM.xlsx"    # You edit this file
+OUTPUT_CSV  = "SKV Sheet-1-Updated.csv"      # Power Query / GitHub raw
+THRESHOLD   = 0.025                           # 2.5% for green/red highlights
+SLEEP_SEC   = 0.3                             # polite delay for Yahoo
+AUTO_PUSH   = True                            # set False to skip git push
 
-# ========= VALIDATE FILE =========
-if not os.path.exists(MASTER_XLSX):
-    raise FileNotFoundError(f"{MASTER_XLSX} not found in repo!")
+# ========= HELPERS =========
+def log(msg): print(msg, flush=True)
 
-# ========= LOAD =========
-df = pd.read_excel(MASTER_XLSX, engine="openpyxl")
+def run(cmd, cwd=None):
+    """Run a shell command; return (rc, stdout, stderr)."""
+    try:
+        p = subprocess.Popen(
+            cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+        )
+        out, err = p.communicate()
+        return p.returncode, out.decode(errors="ignore"), err.decode(errors="ignore")
+    except Exception as e:
+        return 1, "", str(e)
 
-# Ensure required columns exist
-required_cols = [
-    "Stock Name","Time Frame","Zone","Entry Price","Stop Loss","Legout Date",
-    "Validation Issue","Zone Perfection","Entry Date","Status","Diff","Qty",
-    "Tgt","Yahoo Symbol","Last Close Price"
-]
-for col in required_cols:
-    if col not in df.columns:
-        df[col] = None
+def git_available():
+    rc, out, _ = run("git --version")
+    return rc == 0
 
-# ========= CLEAN SYMBOLS =========
+def git_commit_push(files, message):
+    if not AUTO_PUSH:
+        log("ℹ️ AUTO_PUSH=False — skipping git add/commit/push.")
+        return
+    if not git_available():
+        log("⚠️ Git not found on PATH; skipping auto-push. Install Git to enable.")
+        return
+    # Ensure we're inside a git repo
+    rc, out, err = run("git rev-parse --is-inside-work-tree")
+    if rc != 0:
+        log("⚠️ Not in a Git repository; skipping auto-push.")
+        return
+
+    # Add files
+    for f in files:
+        run(f'git add "{f}"')
+
+    # Commit (allow empty = no changes)
+    rc, out, err = run(f'git commit -m "{message}"')
+    if rc != 0 and "nothing to commit" in (out + err).lower():
+        log("ℹ️ No changes to commit.")
+    else:
+        log(out or err)
+
+    # Push
+    rc, out, err = run("git push")
+    if rc != 0:
+        log(f"⚠️ git push failed:\n{err or out}")
+    else:
+        log("🚀 Pushed to remote.")
+
+def ensure_columns(df, cols):
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df
+
 def clean_symbol(sym):
     if not isinstance(sym, str) or sym.strip() == "":
         return None
@@ -42,16 +82,32 @@ def clean_symbol(sym):
         s += ".NS"
     return s
 
-# If Yahoo Symbol missing, build from Stock Name
+# ========= VALIDATE FILE =========
+if not os.path.exists(MASTER_XLSX):
+    raise FileNotFoundError(f"{MASTER_XLSX} not found in repo!")
+
+# ========= LOAD =========
+df = pd.read_excel(MASTER_XLSX, engine="openpyxl")
+
+# Keep schema stable (add missing columns if user added only a few)
+required_cols = [
+    "Stock Name","Time Frame","Zone","Entry Price","Stop Loss","Legout Date",
+    "Validation Issue","Zone Perfection","Entry Date","Status","Diff","Qty",
+    "Tgt","Yahoo Symbol","Last Close Price"
+]
+df = ensure_columns(df, required_cols)
+
+# Fill Yahoo Symbol for new/blank rows based on Stock Name
 df["Yahoo Symbol"] = df["Yahoo Symbol"].where(df["Yahoo Symbol"].notna(), df["Stock Name"])
 df["Yahoo Symbol"] = df["Yahoo Symbol"].apply(clean_symbol)
 
-# ========= FETCH PRICES =========
+# ========= FETCH LATEST PRICES =========
 new_prices = {}
 failed = []
 
-for symbol in df["Yahoo Symbol"]:
-    if pd.isna(symbol) or not isinstance(symbol, str) or symbol.strip()=="":
+symbols = list(df["Yahoo Symbol"]) if "Yahoo Symbol" in df.columns else []
+for symbol in symbols:
+    if pd.isna(symbol) or not isinstance(symbol, str) or symbol.strip() == "":
         failed.append(symbol)
         continue
     try:
@@ -66,7 +122,7 @@ for symbol in df["Yahoo Symbol"]:
             failed.append(symbol)
     except Exception:
         failed.append(symbol)
-    time.sleep(0.3)  # be gentle with Yahoo
+    time.sleep(SLEEP_SEC)
 
 def set_price(row):
     sym = row.get("Yahoo Symbol")
@@ -79,7 +135,7 @@ def set_price(row):
 
 df["Last Close Price"] = df.apply(set_price, axis=1)
 
-# ========= DIFF % helper (numeric rows only) =========
+# ========= DIFF % helper =========
 def diff_pct(row):
     entry = row.get("Entry Price")
     last  = row.get("Last Close Price")
@@ -92,20 +148,17 @@ def diff_pct(row):
         return None
     return None
 
-df["Diff %"] = df.apply(diff_pct, axis=1)  # optional helper column
+df["Diff %"] = df.apply(diff_pct, axis=1)
 
-# ========= SAVE: Excel + CSV =========
+# ========= SAVE (Excel + CSV) =========
 df.to_excel(MASTER_XLSX, index=False)
 df.to_csv(OUTPUT_CSV, index=False)
 
-# ========= ADD CONDITIONAL FORMATTING (green/red rows) =========
-# We re-open with openpyxl to apply formatting that persists in Excel
+# ========= CONDITIONAL FORMATTING (±2.5%) =========
 wb = load_workbook(MASTER_XLSX)
 ws = wb.active
 
-# Find column letters by header names (robust to column order)
-from openpyxl.utils.cell import get_column_letter
-
+# Map headers -> column letters
 headers = {cell.value: cell.column for cell in ws[1] if cell.value}
 def col_letter(col_name):
     idx = headers.get(col_name)
@@ -114,13 +167,13 @@ def col_letter(col_name):
 col_entry = col_letter("Entry Price")
 col_last  = col_letter("Last Close Price")
 
-if col_entry and col_last:
+if col_entry and col_last and ws.max_row >= 2:
     start_row = 2
     end_row = ws.max_row
     end_col_letter = get_column_letter(ws.max_column)
     full_range = f"A{start_row}:{end_col_letter}{end_row}"
 
-    # formulas use absolute columns with relative row
+    # Use a relative formula anchored on the first data row; PQ copies it per-row
     green_formula = f"=AND(ISNUMBER(${col_last}{start_row}),ISNUMBER(${col_entry}{start_row}),${col_last}{start_row}>={col_entry}{start_row}*(1+{THRESHOLD}))"
     red_formula   = f"=AND(ISNUMBER(${col_last}{start_row}),ISNUMBER(${col_entry}{start_row}),${col_last}{start_row}<={col_entry}{start_row}*(1-{THRESHOLD}))"
 
@@ -131,17 +184,24 @@ if col_entry and col_last:
                              fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),
                              stopIfTrue=True)
 
+    # Clear old rules (optional but avoids stacking duplicates)
+    ws.conditional_formatting._cf_rules = {}
+
     ws.conditional_formatting.add(full_range, green_rule)
     ws.conditional_formatting.add(full_range, red_rule)
 
 wb.save(MASTER_XLSX)
 
+# ========= AUTO COMMIT & PUSH =========
+commit_msg = f'Auto-update stock prices @ {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+git_commit_push([MASTER_XLSX, OUTPUT_CSV], commit_msg)
+
 # ========= LOG =========
-print(f"✅ Prices updated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-print(f"📂 Excel updated: {MASTER_XLSX}")
-print(f"📂 CSV updated:   {OUTPUT_CSV}")
+log(f"✅ Prices updated at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+log(f"📂 Excel updated: {MASTER_XLSX}")
+log(f"📂 CSV updated:   {OUTPUT_CSV}")
 
 if failed:
-    print("\n⚠️ Not available:")
+    log("\n⚠️ Not available:")
     for s in sorted(set([x for x in failed if x])):
-        print(" -", s)
+        log(f" - {s}")
