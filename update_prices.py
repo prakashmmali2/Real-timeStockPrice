@@ -7,7 +7,7 @@ import os
 
 # === Master file is now the UPDATED file ===
 updated_file = "SKV Sheet-1-Updated.xlsx"  # Client edits here
-output_csv = "SKV Sheet-1-Updated.csv"     # Power Query reads this
+output_csv = "SKV Sheet_Updated PM.xlsx"     # Power Query reads this
 
 if not os.path.exists(updated_file):
     raise FileNotFoundError(f"{updated_file} not found in repo!")
